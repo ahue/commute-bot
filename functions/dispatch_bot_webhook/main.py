@@ -92,7 +92,8 @@ def command_callback(update):
   print(command_prefix)
   print(command_body)
   handler = {
-    "/commute": command_setup_commute
+    "/commute": command_setup_commute,
+    "/cancel_commute": cancel_commute
   }.get(command_prefix, "Ohoh!")
 
   print(str(handler))
@@ -134,6 +135,36 @@ def location_callback(update):
 
   #db.collection(u"commute_setup").document(chat).delete()
 
+def text_callback(update):
+
+  handler = {
+    KEYB_BTN_CANCEL_COMMUTE: cancel_commute,
+    KEYB_BTN_REQUEST_STATUS: single_status_update
+  }.get(update.message.text, default_text_handler)
+
+  handler(update)
+
+def cancel_commute(update, *args):
+
+  chat_id = update.message.chat.id
+  chat = helper_chat_id(chat_id)
+
+  doc_ref = db.collection(u"commute_active").document(chat)
+
+  bot.send_message(chat_id = chat_id, 
+    text="Canceled your commute to *{}*".format(doc_ref.get().get("commute_to")),
+    parse_mode = "Markdown", 
+    reply_markup = ReplyKeyboardRemove())
+
+  doc_ref.delete()
+
+def single_status_update(update):
+  return None
+
+def default_text_handler(update):
+  bot.send_message(chat_id = update.message.chat.id, 
+    text = "Sorry, I didn't get that...")
+
 def dispatch_bot_webhook(request):
 
   jsn = request.json
@@ -142,12 +173,16 @@ def dispatch_bot_webhook(request):
   
   command_handler = MessageHandler(Filters.command, command_callback)
   location_handler = MessageHandler(Filters.location, location_callback)
+  text_handler = MessageHandler(Filters.text, text_callback)
 
   if command_handler.check_update(update):
     command_callback(update)
 
   if location_handler.check_update(update):
     location_callback(update)
+
+  if text_handler.check_update(update):
+    text_callback(update)
 
   return("OK")
 
