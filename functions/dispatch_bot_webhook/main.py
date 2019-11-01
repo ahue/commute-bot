@@ -95,6 +95,7 @@ def location_callback(update):
   # store snapshot in active commutes
 
   db.collection(u"commute_active").document(chat).set(snapshot)
+  db.collection(u"commute_setup").document(chat).delete()
 
   bot.send_message(chat_id = update.message.chat.id,
   text = "Thank you. Your commute is active now.",
@@ -134,8 +135,8 @@ def commute_monitor(request):
       destination=commute["commute_to"]
       )
 
-    print("Got directions")
-    print(str(directions))
+    # print("Got directions")
+    # print(str(directions))
 
     bot.send_message(chat_id = commute["chat"],
       text = "Currently, commute to {} will take {}.".format(directions[0]["legs"][0]["end_address"], directions[0]["legs"][0]["duration"]["text"]),
@@ -150,4 +151,11 @@ def commute_monitor(request):
 
   
   #TODO: remove outdated commutes
+  #delete_thres = int(datetime.datetime.now().timestamp())
+  delete_thres = int(datetime.datetime.now().timestamp()) - 3600*2
+
+  for doc_snp in db.collection(u"commute_active").where("created", "<=", delete_thres).select(["chat"]).stream():
+    db.collection(u"commute_active").document(doc_snp.id).delete()
+
+
   return(str(directions))
