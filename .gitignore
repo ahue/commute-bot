@@ -1,1 +1,6 @@
-conda-env/*
+.vscode
+.venv
+__pycache__
+serviceaccount.json
+example_message.json
+setup_env.sh
