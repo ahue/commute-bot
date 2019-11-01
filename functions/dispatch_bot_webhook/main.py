@@ -3,7 +3,7 @@ import googlemaps
 import os
 from google.cloud import firestore
 import telegram
-from telegram import KeyboardButton, ReplyKeyboardMarkup, ReplyKeyboardRemove
+from telegram import KeyboardButton, ReplyKeyboardMarkup, ReplyKeyboardRemove, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import MessageHandler, Filters
 import datetime
 import json
@@ -22,6 +22,11 @@ bot = telegram.Bot(token=os.environ["TELEGRAM_TOKEN"])
 
 # print(str(bot))
 
+KEYB_BTN_REQUEST_STATUS = "Request update on commute time"
+KEYB_BTN_CANCEL_COMMUTE = "Cancel commute"
+
+MAPS_URL = "https://www.google.com/maps/dir/?api=1&orgin={}&destination={}&travelmode=driving"
+
 def helper_chat_id(id):
   return u"chat_{}".format(id)
 
@@ -29,6 +34,17 @@ def helper_concat_latlng(dictionary):
   res = "{},{}".format(dictionary["latitude"],dictionary["longitude"])
   print(res)
   return res
+
+def helper_maps_url_reply_markup(origin, destination):
+  maps_url = MAPS_URL.format(
+    origin,
+    destination
+  )
+
+  ilb = [[InlineKeyboardButton("Open Google Maps",url=maps_url)]]
+  reply_markup = InlineKeyboardMarkup(ilb)  
+  return reply_markup
+
 
 def command_setup_commute(update, command_body):
   
@@ -55,8 +71,9 @@ def command_setup_commute(update, command_body):
 
   # request current geolocation from user
 
+  # TODO: Add button to cancel
   kb = [[KeyboardButton("Click to share your location.", request_location=True)]]
-  reply_markup = ReplyKeyboardMarkup(kb)
+  reply_markup = ReplyKeyboardMarkup(kb, resize_keyboard=True, one_time_keyboard=True)
 
   print(update.message.chat.id)
 
@@ -95,12 +112,27 @@ def location_callback(update):
   # store snapshot in active commutes
 
   db.collection(u"commute_active").document(chat).set(snapshot)
-  db.collection(u"commute_setup").document(chat).delete()
+  
+  kb = [[KeyboardButton(KEYB_BTN_REQUEST_STATUS)],
+    [KeyboardButton(KEYB_BTN_CANCEL_COMMUTE)]]
+  reply_markup = ReplyKeyboardMarkup(kb, resize_keyboard=True)
+  
+  # Add Keyboard via fake message and delete the message
+  msg = bot.send_message(chat_id = update.message.chat.id, text = ".", reply_markup=reply_markup)
+  bot.delete_message(chat_id = update.message.chat.id, message_id=msg.message_id)
+
+
+  reply_markup = helper_maps_url_reply_markup(
+    helper_concat_latlng(snapshot["depart_from_latlng"]),
+    snapshot["commute_to"]
+  )
 
   bot.send_message(chat_id = update.message.chat.id,
   text = "Thank you. Your commute is active now.",
   parse_mode = "Markdown",
-  reply_markup = ReplyKeyboardRemove())
+  reply_markup = reply_markup)
+
+  #db.collection(u"commute_setup").document(chat).delete()
 
 def dispatch_bot_webhook(request):
 
@@ -138,9 +170,15 @@ def commute_monitor(request):
     # print("Got directions")
     # print(str(directions))
 
+    reply_markup = helper_maps_url_reply_markup(
+      helper_concat_latlng(commute["depart_from_latlng"]),
+      commute["commute_to"]
+    )
+
     bot.send_message(chat_id = commute["chat"],
-      text = "Currently, commute to {} will take {}.".format(directions[0]["legs"][0]["end_address"], directions[0]["legs"][0]["duration"]["text"]),
-      parse_mode = "Markdown")
+      text = "Currently, commute to *{}* will take *{}*.".format(directions[0]["legs"][0]["end_address"], directions[0]["legs"][0]["duration"]["text"]),
+      parse_mode = "Markdown",
+      reply_markup = reply_markup)
 
 
   #TODO: Store if time is decreasing or increasing and inform user

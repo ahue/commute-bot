@@ -12,12 +12,7 @@ dispatcher = updater.dispatcher
 
 def echo(update, context):
   print(update.to_json())
-
-  kb = [[KeyboardButton("Where are you now?", request_location=True)]]
-  
-  reply_markup = ReplyKeyboardMarkup(kb)
-
-  update.message.reply_text("Please share your location", reply_markup=reply_markup)
+  update.message.reply_text(update.message.text)
 
 echo_handler = MessageHandler(Filters.text, echo)
 dispatcher.add_handler(echo_handler)
