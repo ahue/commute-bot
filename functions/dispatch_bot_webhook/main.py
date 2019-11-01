@@ -20,10 +20,15 @@ db = firestore.Client()
 
 bot = telegram.Bot(token=os.environ["TELEGRAM_TOKEN"])
 
-print(str(bot))
+# print(str(bot))
 
 def helper_chat_id(id):
   return u"chat_{}".format(id)
+
+def helper_concat_latlng(dictionary):
+  res = "{},{}".format(dictionary["latitude"],dictionary["longitude"])
+  print(res)
+  return res
 
 def command_setup_commute(update, command_body):
   
@@ -43,7 +48,7 @@ def command_setup_commute(update, command_body):
   # store info in firestore
   doc_ref = db.collection(u"commute_setup").document(chat)
   doc_ref.set({
-    u"chat": chat,
+    u"chat": update.message.chat.id,
     u"commute_to": to,
     u"max_travel_time": max_tt
   })
@@ -84,7 +89,7 @@ def location_callback(update):
 
   snapshot = db.collection(u"commute_setup").document(chat).get().to_dict()
   
-  snapshot["depart_from_latlng"] = update.message.location.to_json()
+  snapshot["depart_from_latlng"] = json.loads(update.message.location.to_json())
   snapshot["created"] = int(datetime.datetime.now().timestamp())
 
   # store snapshot in active commutes
@@ -112,3 +117,37 @@ def dispatch_bot_webhook(request):
     location_callback(update)
 
   return("OK")
+
+def commute_monitor(request):
+  """
+    Get regularly called by a cron job and
+      a) removes outdated commutes
+      b) checks active commutes and sends infos to user
+  """
+
+  # get active commutes
+  for doc_ref in db.collection(u"commute_active").stream():
+
+    commute = doc_ref.to_dict()
+
+    directions = gmaps.directions(origin=helper_concat_latlng(commute["depart_from_latlng"]),
+      destination=commute["commute_to"]
+      )
+
+    print("Got directions")
+    print(str(directions))
+
+    bot.send_message(chat_id = commute["chat"],
+      text = "Currently, commute to {} will take {}.".format(directions[0]["legs"][0]["end_address"], directions[0]["legs"][0]["duration"]["text"]),
+      parse_mode = "Markdown")
+
+
+  #TODO: Store if time is decreasing or increasing and inform user
+  #TODO: Only send messages when travel time is below threshold, but send a status update now and then
+  #TODO: Think about haveing a keyboard ready to stop or request status
+
+  #TODO: Think about using traffic_model="pessimistic"
+
+  
+  #TODO: remove outdated commutes
+  return(str(directions))
