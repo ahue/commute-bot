@@ -24,6 +24,9 @@ bot = telegram.Bot(token=os.environ["TELEGRAM_TOKEN"])
 
 KEYB_BTN_REQUEST_STATUS = "Request update on commute time 🔄"
 KEYB_BTN_CANCEL_COMMUTE = "Cancel commute ❌"
+COMMUTE_ENV = os.environ["COMMUTE_ENV"]
+COMMUTE_ENV_PRD = "PRD"
+COMMUTE_ENV_DEV = "DEV"
 
 MAPS_URL = "https://www.google.com/maps/dir/?api=1&orgin={}&destination={}&travelmode=driving"
 
@@ -315,6 +318,7 @@ def commute_monitor(request):
       reply_markup = reply_markup
     )
 
-    #db.collection(u"commute_active").document(doc_snp.id).delete()
+    if COMMUTE_ENV == COMMUTE_ENV_PRD:
+      db.collection(u"commute_active").document(doc_snp.id).delete()
 
   return "OK", 200
