@@ -3,8 +3,10 @@ import googlemaps
 import os
 from google.cloud import firestore
 import telegram
-from telegram import KeyboardButton, ReplyKeyboardMarkup
+from telegram import KeyboardButton, ReplyKeyboardMarkup, ReplyKeyboardRemove
 from telegram.ext import MessageHandler, Filters
+import datetime
+import json
 
 parser = argparse.ArgumentParser(description = "Parses command")
 parser.add_argument("to", type=str, nargs=1, help="the place to commute to")
@@ -20,9 +22,12 @@ bot = telegram.Bot(token=os.environ["TELEGRAM_TOKEN"])
 
 print(str(bot))
 
+def helper_chat_id(id):
+  return u"chat_{}".format(id)
+
 def command_setup_commute(update, command_body):
   
-  chat = u"chat_{}".format(update.message.chat.id)
+  chat = helper_chat_id(update.message.chat.id)
 
   
   # command should look like "Trudering 40", which means to Trudering in 40mins
@@ -45,7 +50,7 @@ def command_setup_commute(update, command_body):
 
   # request current geolocation from user
 
-  kb = [[KeyboardButton("Where are you now?", request_location=True)]]
+  kb = [[KeyboardButton("Click to share your location.", request_location=True)]]
   reply_markup = ReplyKeyboardMarkup(kb)
 
   print(update.message.chat.id)
@@ -71,6 +76,26 @@ def command_callback(update):
   print(str(handler))
   handler(update, command_body)
 
+def location_callback(update):
+
+  # get chat id and chat from firestore
+
+  chat = helper_chat_id(update.message.chat.id)
+
+  snapshot = db.collection(u"commute_setup").document(chat).get().to_dict()
+  
+  snapshot["depart_from_latlng"] = update.message.location.to_json()
+  snapshot["created"] = int(datetime.datetime.now().timestamp())
+
+  # store snapshot in active commutes
+
+  db.collection(u"commute_active").document(chat).set(snapshot)
+
+  bot.send_message(chat_id = update.message.chat.id,
+  text = "Thank you. Your commute is active now.",
+  parse_mode = "Markdown",
+  reply_markup = ReplyKeyboardRemove())
+
 def dispatch_bot_webhook(request):
 
   jsn = request.json
@@ -78,8 +103,12 @@ def dispatch_bot_webhook(request):
   update = telegram.Update.de_json(request.get_json(force=True), bot)
   
   command_handler = MessageHandler(Filters.command, command_callback)
+  location_handler = MessageHandler(Filters.location, location_callback)
 
   if command_handler.check_update(update):
     command_callback(update)
+
+  if location_handler.check_update(update):
+    location_callback(update)
 
   return("OK")

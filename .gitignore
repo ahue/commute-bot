@@ -3,4 +3,5 @@
 __pycache__
 serviceaccount.json
 example_message.json
+location_message.json
 setup_env.sh

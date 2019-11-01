@@ -23,7 +23,7 @@ echo_handler = MessageHandler(Filters.text, echo)
 dispatcher.add_handler(echo_handler)
 
 def location(update, context):
-  logging.info(str(update.message))
+  logging.info(update.to_json())
 
 location_handler = MessageHandler(Filters.location, location)
 
