@@ -29,7 +29,7 @@ COMMUTE_ENV = os.environ["COMMUTE_ENV"]
 COMMUTE_ENV_PRD = "PRD"
 COMMUTE_ENV_DEV = "DEV"
 try:
-  COMMUTE_TIMEOUT = os.environ["COMMUTE_TIMEOUT"]
+  COMMUTE_TIMEOUT = int(os.environ["COMMUTE_TIMEOUT"])
 except:
   COMMUTE_TIMEOUT = 120
 
@@ -53,6 +53,26 @@ def helper_maps_url_reply_markup(origin, destination):
   reply_markup = InlineKeyboardMarkup(ilb)  
   return reply_markup
 
+def frmt_ttime(seconds):
+  """
+    Nicely formats an amout of seconds in hrs in minutes
+    5231 ->  1h 27min
+  """
+  mins = round(seconds/60) 
+  hrs_out = mins % 60
+  mins_out = mins - hrs_out * 60
+  
+  if hrs_out > 0:
+    return "{}h {}min".format(hrs_out, mins_out)
+  else:
+    return "{}min".format(mins_out)
+
+def frmt_addr(input):
+  """
+    Nicely formats an address retrieved from google geocoder
+    e.g. Kurfürstendamm 10, Berlin, Germany --> Kurfürstendamm 10 Germany
+  """
+  return ",".join(input.split(",")[0:-1]).replace(",","").strip()
 
 def command_setup_commute(update, command_body):
   
@@ -89,7 +109,7 @@ def command_setup_commute(update, command_body):
   print(update.message.chat.id)
 
   bot.send_message(chat_id = update.message.chat.id,
-    text = "Please share your location",
+    text = "Please share your location, so I know where you depart.",
     parse_mode = "Markdown",
     reply_markup = reply_markup)
   # update.message.reply_text("Please share your location", reply_markup=reply_markup)
@@ -133,7 +153,7 @@ def activate_commute_msg(commute):
   )
 
   bot.send_message(chat_id = chat_id,
-  text = "Thank you. Your commute to *{}* is active now.".format(commute["commute_to"]),
+  text = "Thank you. Your commute to *{}* is active now.".format(frmt_addr(commute["commute_to"])),
   parse_mode = "Markdown",
   reply_markup = reply_markup)
 
@@ -149,6 +169,10 @@ def location_callback(update):
   
   commute["depart_from_latlng"] = json.loads(update.message.location.to_json())
   commute["created"] = int(datetime.datetime.now().timestamp())
+
+  # Add Keyboard via fake message and delete the message
+  msg = bot.send_message(chat_id = commute["chat"], text = ".", reply_markup=ReplyKeyboardRemove())
+  bot.delete_message(chat_id = commute["chat"], message_id=msg.message_id)
 
   # TODO: Check minimal travel time and alert if requested time is lower than that
   check_reasonable_travel_time(commute)
@@ -189,7 +213,7 @@ def cancel_commute(update, *args):
   doc_ref = db.collection(u"commute_active").document(chat)
 
   bot.send_message(chat_id = chat_id, 
-    text="Canceled your commute to *{}*".format(doc_ref.get().get("commute_to")),
+    text="Canceled your commute to *{}*".format(frmt_addr(doc_ref.get().get("commute_to"))),
     parse_mode = "Markdown", 
     reply_markup = ReplyKeyboardRemove())
 
@@ -262,7 +286,9 @@ def check_reasonable_travel_time(commute):
   # schneller wirds nicht, braucht kein commute, fahr jetzt los
   if float(duration_min) / float(duration_current) > 0.97:
     bot.send_message(chat_id = commute["chat"],
-      text = "The current estimated travel time of *{} min* is already very close to the minimal time to *{}*. You better depart now. No need for a commute reminder.".format(int(duration_current / 60), commute["commute_to"]),
+      text = "The current estimated travel time of *{} min* is already very close to the minimal time to *{}*. You better depart now. No need for a commute reminder.".format(
+        frmt_ttime(duration_current), 
+        frmt_addr(commute["commute_to"])),
       parse_mode = "Markdown"
     )
 
@@ -279,22 +305,21 @@ def check_reasonable_travel_time(commute):
 
     steps = np.asarray((float(duration_current) - 
       np.array([0.2, 0.4, 0.8]) * (duration_current - duration_min)) 
-      /60
     , dtype=int)
 
     emojis = ["🐌","🐇","🚀"]
-    ilb = [[InlineKeyboardButton("{} {} min".format(e, s), 
-      callback_data=u"set_max_travel_time|{{\"max_travel_time\" : {} }}".format(s*60)) for s, e in zip(steps, emojis)]]
+    ilb = [[InlineKeyboardButton("{} {}".format(e, frmt_ttrim(s)), 
+      callback_data=u"set_max_travel_time|{{\"max_travel_time\" : {} }}".format(s)) for s, e in zip(steps, emojis)]]
 
     reply_markup = InlineKeyboardMarkup(ilb)  
 
     # send 
     bot.send_message(chat_id = commute["chat"],
-      text = "Sorry! Your wished travel time of *{} min* is too optimistic. Current travel time is *{} min*. Lowest estimated travel time to *{}* is *{} min*. Want to choose a more realistic one from below?".format(
-        int(commute["max_travel_time"] / 60),
-        int(duration_current / 60),
-        commute["commute_to"],
-        int(duration_min / 60)
+      text = "Sorry! Your wished travel time of *{}* is too optimistic. Current travel time is *{}*. Lowest estimated travel time to *{}* is *{}*. Want to choose a more realistic one from below?".format(
+        frmt_ttime(commute["max_travel_time"]),
+        frmt_ttime(duration_current),
+        frmt_addr(commute["commute_to"]),
+        frmt_ttime(duration_min)
       ), parse_mode = "Markdown",
       reply_markup = reply_markup)
     
@@ -307,7 +332,6 @@ def check_reasonable_travel_time(commute):
 
   if COMMUTE_ENV == COMMUTE_ENV_DEV:
     db.collection(u"commute_setup").document(chat).delete()
-
 
 def single_status_update_btn(update, *args):
   # TODO: Refactor naming of function
@@ -330,7 +354,9 @@ def single_status_update(commute):
   )
 
   bot.send_message(chat_id = commute["chat"],
-    text = "Currently, commute to *{}* will take *{}*.".format(directions[0]["legs"][0]["end_address"], directions[0]["legs"][0]["duration"]["text"]),
+    text = "Currently, commute to *{}* will take *{}*.".format(
+      frmt_addr(directions[0]["legs"][0]["end_address"]), 
+      frmt_addd(directions[0]["legs"][0]["duration"]["text"])),
     parse_mode = "Markdown",
     reply_markup = reply_markup)
 
@@ -418,7 +444,7 @@ def commute_monitor(request):
 
     bot.send_message(chat_id=doc_snp.get("chat"), 
       text="Your commute to *{}* timed out. Feel free to start a new one.".format(
-        doc_snp.get("commute_to")
+        frmt_addr(doc_snp.get("commute_to"))
       ),
       parse_mode = "Markdown",
       reply_markup = reply_markup
