@@ -33,6 +33,7 @@ jinja2==2.10.3
 lazy-object-proxy==1.4.3
 markupsafe==1.1.1
 mccabe==0.6.1
+numpy==1.17.3
 protobuf==3.10.0
 pyasn1-modules==0.2.7
 pyasn1==0.4.7
