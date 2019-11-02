@@ -59,11 +59,13 @@ def frmt_ttime(seconds):
     5231 ->  1h 27min
   """
   mins = round(seconds/60) 
-  hrs_out = mins % 60
+  hrs_out = int(mins / 60)
   mins_out = mins - hrs_out * 60
-  
   if hrs_out > 0:
-    return "{}h {}min".format(hrs_out, mins_out)
+    if mins_out > 0:
+      return "{}h {}min".format(hrs_out, mins_out)
+    else:
+      return "{}h".format(hrs_out)
   else:
     return "{}min".format(mins_out)
 
@@ -286,7 +288,7 @@ def check_reasonable_travel_time(commute):
   # schneller wirds nicht, braucht kein commute, fahr jetzt los
   if float(duration_min) / float(duration_current) > 0.97:
     bot.send_message(chat_id = commute["chat"],
-      text = "The current estimated travel time of *{} min* is already very close to the minimal time to *{}*. You better depart now. No need for a commute reminder.".format(
+      text = "The current estimated travel time of *{}* is already very close to the minimal time to *{}*. You better depart now. No need for a commute reminder.".format(
         frmt_ttime(duration_current), 
         frmt_addr(commute["commute_to"])),
       parse_mode = "Markdown"
