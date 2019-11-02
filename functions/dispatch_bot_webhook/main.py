@@ -7,6 +7,7 @@ from telegram import KeyboardButton, ReplyKeyboardMarkup, ReplyKeyboardRemove, I
 from telegram.ext import MessageHandler, Filters, CallbackQueryHandler
 import datetime
 import json
+import numpy as np
 
 # parser = argparse.ArgumentParser(description = "Parses command")
 # parser.add_argument("to", type=str, nargs=1, help="the place to commute to")
@@ -27,6 +28,10 @@ KEYB_BTN_CANCEL_COMMUTE = "Cancel commute ❌"
 COMMUTE_ENV = os.environ["COMMUTE_ENV"]
 COMMUTE_ENV_PRD = "PRD"
 COMMUTE_ENV_DEV = "DEV"
+try:
+  COMMUTE_TIMEOUT = os.environ["COMMUTE_TIMEOUT"]
+except:
+  COMMUTE_TIMEOUT = 120
 
 MAPS_URL = "https://www.google.com/maps/dir/?api=1&orgin={}&destination={}&travelmode=driving"
 
@@ -61,7 +66,7 @@ def command_setup_commute(update, command_body):
   # max_tt = int(args.max_tt[0])
 
   to = " ".join(command_body.split(" ")[0:-1])
-  max_tt = int(command_body.split(" ")[-1])
+  max_tt = int(command_body.split(" ")[-1]) * 60 # seconds
 
   # Lookup in maps 
   geocode = gmaps.geocode(to)
@@ -132,27 +137,23 @@ def activate_commute_msg(commute):
   parse_mode = "Markdown",
   reply_markup = reply_markup)
 
+  single_status_update(commute)
+
 def location_callback(update):
 
   # get chat id and chat from firestore
 
   chat = helper_chat_id(update.message.chat.id)
 
-  snapshot = db.collection(u"commute_setup").document(chat).get().to_dict()
+  commute = db.collection(u"commute_setup").document(chat).get().to_dict()
   
-  snapshot["depart_from_latlng"] = json.loads(update.message.location.to_json())
-  snapshot["created"] = int(datetime.datetime.now().timestamp())
+  commute["depart_from_latlng"] = json.loads(update.message.location.to_json())
+  commute["created"] = int(datetime.datetime.now().timestamp())
 
   # TODO: Check minimal travel time and alert if requested time is lower than that
-  
-  # store snapshot in active commutes
-  db.collection(u"commute_active").document(chat).set(snapshot)
-  
-  chat_id = snapshot["chat"]
+  check_reasonable_travel_time(commute)
 
-  activate_commute_msg(snapshot)
-
-  #db.collection(u"commute_setup").document(chat).delete()
+  return
 
 def text_callback(update):
 
@@ -167,11 +168,18 @@ def callback_query_callback(update):
 
   print("callback_query_callback")
 
-  handler = {
-    "reactivate_last_commute": reactivate_last_commute
-  }.get(update.callback_query.data, "Ohoh!")
+  callback_data_prefix = update.callback_query.data.split("|")[0]
+  try:
+    callback_data_payload = json.loads(update.callback_query.data.split("|")[1])
+  except:
+    callback_data_payload = None
 
-  handler(update)
+  handler = {
+    "reactivate_last_commute": reactivate_last_commute,
+    "set_max_travel_time": set_max_travel_time
+  }.get(callback_data_prefix, "Ohoh!")
+
+  handler(update, callback_data_payload)
 
 def cancel_commute(update, *args):
 
@@ -187,9 +195,10 @@ def cancel_commute(update, *args):
 
   doc_ref.delete()
 
-def reactivate_last_commute(update):
+def reactivate_last_commute(update, *args):
   print("reactivate_last_commute")
   # get last commute from archive
+  # TODO: Remove the working info from document (e.g. duration probes, current traveltime, min traveltime)
   doc_snp = next(db.collection(u"commute_archive").where("chat", "==", update.effective_chat.id).order_by("created").limit(1).stream()).to_dict()
   
   doc_snp["created"] = int(datetime.datetime.now().timestamp())
@@ -200,6 +209,105 @@ def reactivate_last_commute(update):
   print("after write")
   # inform the user
   activate_commute_msg(doc_snp)
+
+def set_max_travel_time(update, payload):
+
+  chat = helper_chat_id(update.effective_chat.id)
+  
+  commute = db.collection(u"commute_setup").document(chat).get().to_dict()
+  
+  commute["max_travel_time"] = payload["max_travel_time"]
+  # check reasonable travel time
+  check_reasonable_travel_time(commute)
+  
+def check_reasonable_travel_time(commute):
+
+  chat = helper_chat_id(commute["chat"])
+
+
+  today = datetime.datetime.today().replace(hour=0, minute=0, second=0, microsecond=0)
+  next_sunday_night = int((today + datetime.timedelta(days = (7 - today.weekday()) % 7 ) + datetime.timedelta(hours = 1)
+  ).timestamp())
+
+  try:
+    duration_min = commute["duration_min"]
+  except KeyError:
+    directions = gmaps.directions(origin = helper_concat_latlng(commute["depart_from_latlng"]),
+      destination = commute["commute_to"],
+      traffic_model = "optimistic",
+      departure_time = next_sunday_night
+    )
+
+    duration_min = directions[0]["legs"][0]["duration"]["value"]
+    commute["duration_min"] = duration_min
+
+  try:
+    duration_current = commute["duration_probes"][-1]["duration"]
+  except KeyError:
+    directions = gmaps.directions(origin = helper_concat_latlng(commute["depart_from_latlng"]),
+      destination = commute["commute_to"],
+    )  
+
+    duration_current = directions[0]["legs"][0]["duration"]["value"]
+    commute["duration_probes"] = [
+      {
+        "timestamp": int(datetime.datetime.now().timestamp()),
+        "duration": duration_current
+      }
+    ]
+
+  if COMMUTE_ENV == COMMUTE_ENV_DEV:
+    duration_current = 1.5 * duration_min
+
+  # schneller wirds nicht, braucht kein commute, fahr jetzt los
+  if float(duration_min) / float(duration_current) > 0.97:
+    bot.send_message(chat_id = commute["chat"],
+      text = "The current estimated travel time of *{} min* is already very close to the minimal time to *{}*. You better depart now. No need for a commute reminder.".format(int(duration_current / 60), commute["commute_to"]),
+      parse_mode = "Markdown"
+    )
+
+    # remove reminder from setup
+    return False
+
+  if duration_min > commute["max_travel_time"]:
+
+    db.collection(u"commute_setup").document(chat).set(commute)
+
+    # set up reasonable buttons
+    print(duration_current)
+    print(duration_min)
+
+    steps = np.asarray((float(duration_current) - 
+      np.array([0.2, 0.4, 0.8]) * (duration_current - duration_min)) 
+      /60
+    , dtype=int)
+
+    emojis = ["🐌","🐇","🚀"]
+    ilb = [[InlineKeyboardButton("{} {} min".format(e, s), 
+      callback_data=u"set_max_travel_time|{{\"max_travel_time\" : {} }}".format(s*60)) for s, e in zip(steps, emojis)]]
+
+    reply_markup = InlineKeyboardMarkup(ilb)  
+
+    # send 
+    bot.send_message(chat_id = commute["chat"],
+      text = "Sorry! Your wished travel time of *{} min* is too optimistic. Current travel time is *{} min*. Lowest estimated travel time to *{}* is *{} min*. Want to choose a more realistic one from below?".format(
+        int(commute["max_travel_time"] / 60),
+        int(duration_current / 60),
+        commute["commute_to"],
+        int(duration_min / 60)
+      ), parse_mode = "Markdown",
+      reply_markup = reply_markup)
+    
+    return False
+
+  # store snapshot in active commutes
+  db.collection(u"commute_active").document(chat).set(commute)
+  
+  activate_commute_msg(commute)
+
+  if COMMUTE_ENV == COMMUTE_ENV_DEV:
+    db.collection(u"commute_setup").document(chat).delete()
+
 
 def single_status_update_btn(update, *args):
   # TODO: Refactor naming of function
@@ -245,23 +353,22 @@ def dispatch_bot_webhook(request):
   callback_query_filter = CallbackQueryHandler(callback_query_callback)
 
   handler = None
-
   try:
-    if Filters.command.filter(update):
+    if Filters.command.filter(update.message):
       print("command_handler")
       handler = command_callback
   except AttributeError:
     None
 
   try:
-    if Filters.location.filter(update):
+    if Filters.location.filter(update.message):
       print("location_handler")
       handler = location_callback
   except AttributeError:
     None
 
   try:
-    if Filters.text.filter(update):
+    if Filters.text.filter(update.message):
       print("text_handler")
       handler =text_callback
   except AttributeError:
@@ -291,20 +398,19 @@ def commute_monitor(request):
     single_status_update(commute)
 
   #TODO: Store if time is decreasing or increasing and inform user if increasing or decreasing more than 5mins
-  #TODO: Only send messages when travel time is below threshold, but send a status update now and then
-  #TODO: Think about haveing a keyboard ready to stop or request status
+  #TODO: Only send messages when travel time is below threshold, but send a status update now and then (e.g. if travel time is de or increasing)
 
-  #TODO: Think about using traffic_model="pessimistic"
 
   
-  #TODO: remove outdated commutes
-  delete_thres = int(datetime.datetime.now().timestamp())
-  #delete_thres = int(datetime.datetime.now().timestamp()) - 3600*2
+  #remove outdated commutes after timeout period
+  #delete_thres = int(datetime.datetime.now().timestamp())
+  delete_thres = int(datetime.datetime.now().timestamp() - 3600* float(COMMUTE_TIMEOUT)/60)
 
   for doc_snp in db.collection(u"commute_active").where("created", "<=", delete_thres).stream():
-
+     
     db.collection(u"commute_archive").add(doc_snp.to_dict())
 
+    # TODO: Implement step by step new commute setup
     ilb = [[InlineKeyboardButton("Restart this commute 🔁",callback_data="reactivate_last_commute"),
       #InlineKeyboardButton("Start a new commute ▶️", callback_data="start_new_commute")
       ]]
