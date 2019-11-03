@@ -231,7 +231,7 @@ def reactivate_last_commute(update, *args):
 
   # set to active
   chat = helper_chat_id(update.effective_chat.id)
-  res = db.collection(u"commute_active").document(chat).set(doc_snp)
+  db.collection(u"commute_active").document(chat).set(doc_snp)
   print("after write")
   # inform the user
   activate_commute_msg(doc_snp)
@@ -310,7 +310,7 @@ def check_reasonable_travel_time(commute):
     , dtype=int)
 
     emojis = ["🐌","🐇","🚀"]
-    ilb = [[InlineKeyboardButton("{} {}".format(e, frmt_ttrim(s)), 
+    ilb = [[InlineKeyboardButton("{} {}".format(e, frmt_ttime(s)), 
       callback_data=u"set_max_travel_time|{{\"max_travel_time\" : {} }}".format(s)) for s, e in zip(steps, emojis)]]
 
     reply_markup = InlineKeyboardMarkup(ilb)  
@@ -358,7 +358,7 @@ def single_status_update(commute):
   bot.send_message(chat_id = commute["chat"],
     text = "Currently, commute to *{}* will take *{}*.".format(
       frmt_addr(directions[0]["legs"][0]["end_address"]), 
-      frmt_addd(directions[0]["legs"][0]["duration"]["text"])),
+      frmt_addr(directions[0]["legs"][0]["duration"]["text"])),
     parse_mode = "Markdown",
     reply_markup = reply_markup)
 
@@ -367,8 +367,6 @@ def default_text_handler(update):
     text = "Sorry, I didn't get that...")
 
 def dispatch_bot_webhook(request):
-
-  jsn = request.json
 
   update = telegram.Update.de_json(request.get_json(force=True), bot)
   print(update)
