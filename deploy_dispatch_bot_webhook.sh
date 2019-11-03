@@ -1,6 +1,8 @@
 #/bin/sh
 
 # TODO: Remove --allow-unauthenticated 
+# execute this script in the root directory of the project
+
 
 # export environment variables
 . setup_env.sh

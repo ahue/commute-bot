@@ -1,6 +1,7 @@
 #/bin/sh
 
 # TODO: Remove --allow-unauthenticated 
+# execute this script in the root directory of the project
 
 # generate requirements
 pipenv run pipenv_to_requirements -f
