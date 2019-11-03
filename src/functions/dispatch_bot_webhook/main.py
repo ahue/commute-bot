@@ -18,6 +18,7 @@ gmaps = googlemaps.Client(key=os.environ["GOOGLE_MAPS_API_KEY"])
 
 db = firestore.Client()
 
+
 class BotClient:
   """ Singleton for the bot client """
   instance = None
@@ -75,7 +76,7 @@ def frmt_ttime(seconds):
   """
   mins = round(seconds/60) 
   hrs_out = int(mins / 60)
-  mins_out = mins - hrs_out * 60
+  mins_out = int(mins - hrs_out * 60)
   if hrs_out > 0:
     if mins_out > 0:
       return "{}h {}min".format(hrs_out, mins_out)
@@ -176,7 +177,8 @@ def activate_commute_msg(commute):
   parse_mode = "Markdown",
   reply_markup = reply_markup)
 
-  single_status_update(commute)
+  duration = check_current_duration(commute)
+  single_status_update(commute, duration)
 
 def location_callback(update):
 
@@ -263,7 +265,6 @@ def set_max_travel_time(update, payload):
   # check reasonable travel time
   check_reasonable_travel_time(commute)
 
-
 def check_reasonable_travel_time(commute):
 
   chat = helper_chat_id(commute["chat"])
@@ -287,9 +288,8 @@ def check_reasonable_travel_time(commute):
   try:
     duration_current = commute["duration_probes"][-1]["duration"]
   except KeyError:
-    directions = gmaps.directions(origin = helper_concat_latlng(commute["depart_from_latlng"]),
-      destination = commute["commute_to"],
-    )  
+    duration = check_current_duration(commute)
+    duration_current = duration["value"]  
 
     duration_current = directions[0]["legs"][0]["duration"]["value"]
     commute["duration_probes"] = [
@@ -356,17 +356,41 @@ def single_status_update_btn(update, *args):
   # TODO: Refactor naming of function, since its not a button anymore
   chat = helper_chat_id(update.effective_chat.id)
   commute = db.collection(u"commute_active").document(chat).get().to_dict()
-  single_status_update(commute)
+  
+  duration = check_current_duration(commute)
+  single_status_update(commute, duration)
 
-def single_status_update(commute):
-  """ Get and send a status update for a given commute """
+def check_current_duration(commute):
 
   directions = gmaps.directions(origin=helper_concat_latlng(commute["depart_from_latlng"]),
-      destination=commute["commute_to"]
-      )
+    destination=commute["commute_to"]
+    )
+
+  duration = {
+    "text": directions[0]["legs"][0]["duration"]["text"],
+    "value": directions[0]["legs"][0]["duration"]["value"]
+  }
+
+  chat = helper_chat_id(commute["chat"])
+  doc_ref = db.collection(u"commute_active").document(chat)
+  doc_ref.set({
+    "duration_probes": doc_ref.get().get("duration_probes").append({
+      "timestamp": int(datetime.datetime.now().timestamp()),
+      "duration": duration["value"]
+    })
+  })  
+
+  return duration
+
+def single_status_update(commute, duration):
+  """ Get and send a status update for a given commute """
 
   # print("Got directions")
   # print(str(directions))
+
+  db.collection(u"commute_active").document(helper_chat_id(commute["chat"])).set({
+    "last_status_update": int(datetime.datetime.now().timestamp())
+  })
 
   reply_markup = helper_maps_url_reply_markup(
     helper_concat_latlng(commute["depart_from_latlng"]),
@@ -375,8 +399,8 @@ def single_status_update(commute):
 
   bot.send_message(chat_id = commute["chat"],
     text = "Currently, commute to *{}* will take *{}*.".format(
-      frmt_addr(directions[0]["legs"][0]["end_address"]), 
-      frmt_addr(directions[0]["legs"][0]["duration"]["text"])),
+      frmt_addr(commute["commute_to"]), 
+      frmt_ttime(duration["value"])),
     parse_mode = "Markdown",
     reply_markup = reply_markup)
 
@@ -428,27 +452,46 @@ def dispatch_bot_webhook(request):
 
   handler(update)
 
-def commute_monitor(request):
-  """
-    Get regularly called by a cron job and
-      a) removes outdated commutes
-      b) checks active commutes and sends infos to user
-  """
-
+def check_active_commutes():
   # get active commutes
   for doc_ref in db.collection(u"commute_active").stream():
 
     commute = doc_ref.to_dict()
 
-    single_status_update(commute)
 
-  #TODO: Store if time is decreasing or increasing and inform user if increasing or decreasing more than 5mins
-  #TODO: Only send messages when travel time is below threshold, but send a status update now and then (e.g. if travel time is de or increasing)
+    # TODO: Think about passing arround document references instead of dictionaries... but think hard
+    duration = check_current_duration(commute)
+    
+    try:
+      last_status_update = commute["last_status_update"]
+    except KeyError:
+      last_status_update = 0
 
+    ts_now = datetime.datetime.now().timestamp()
 
+    # Compute wheter commute time changed more than probe timestamps 
+    # e.g. difference between probes in time: 300sec, difference in commute-time 400sec
+    try:
+      change =  (ts_now - commute["duration_probes"][-1]["timestamp"] < 
+        abs(duration["value"] - commute["duration_probes"][-1]["duration"]))
+    except KeyError:
+      change = False
+
+    # TODO: compute trend if there is enough data (at least 2 probes and one current)
+    # TODO: if negative extrapolate when desired duration is reached
+    # TODO: inform user if increasing or decreasing more than 5mins
+    # TODO: make flexible threhold configurable
+
+    if (change or
+      duration["value"] * 0.95 < commute["max_travel_time"] or # close to desired commute_time 
+      last_status_update < int(ts_now) - 900): # didn't hear from the bot longer that 15mins
+          
+      single_status_update(commute, duration)
+
+def remove_outdated_commutes():
+  """ remove outdated commutes after timeout period """
   
-  #remove outdated commutes after timeout period
-  #delete_thres = int(datetime.datetime.now().timestamp())
+  # delete_thres = int(datetime.datetime.now().timestamp())
   delete_thres = int(datetime.datetime.now().timestamp() - 3600* float(COMMUTE_TIMEOUT)/60)
 
   for doc_snp in db.collection(u"commute_active").where("created", "<=", delete_thres).stream():
@@ -471,5 +514,14 @@ def commute_monitor(request):
 
     if COMMUTE_ENV == COMMUTE_ENV_PRD:
       db.collection(u"commute_active").document(doc_snp.id).delete()
+
+def commute_monitor(request):
+  """
+    Get regularly called by a cron job and
+      a) removes outdated commutes
+      b) checks active commutes and sends infos to user
+  """
+  check_active_commutes()
+  remove_outdated_commutes()
 
   return "OK", 200
