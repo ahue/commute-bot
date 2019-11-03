@@ -1,6 +1,6 @@
 # Commute Bot
 
-This is a Telegram bot, that can be used for helping with the commute. The use cases is solves is the following:
+This is a Telegram bot, that can be used for helping with optimizing commute times. The use cases it solves is the following:
 
 *As a commuter (by car), I need to know when to leave (for home/for work), so I am not stuck in traffic for longer than i find acceptable.*
 
@@ -101,5 +101,3 @@ COMMUTE_TIMEOUT: "120"
 /help
 /start
 ```
-
-## Dialogue
