@@ -11,7 +11,7 @@ cur_dir=($PWD);
 cd src/functions/dispatch_bot_webhook;
   
 gcloud functions deploy commute_monitor \
-  --env-vars-file ../../cloud_env.yml \
+  --env-vars-file ../../../cloud_env.yml \
   --runtime python37 \
   --trigger-http \
   --region europe-west1 \
