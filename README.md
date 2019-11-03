@@ -50,6 +50,18 @@ pipenv shell # should setup the environment
 # pipenv install flask...
 ```
 
+### Environment variables
+
+The application makes use of the following environment variables
+
+```
+TELEGRAM_TOKEN # The token for the telegram bot
+GOOGLE_MAPS_API_KEY # API Key for the Google Maps API
+COMMUTE_BOT_USERS # Comma separated list of Telegram usernames: e.g. user1,user2 to restrict access to the bot
+COMMUTE_ENV=DEV # Switch between development (DEV) and production environment (PRD)
+COMMUTE_BOT_WEBHOOK # Enpoint of the Telegram bot webkook; Typically something like https://<compute-region>-<project-id>.cloudfunctions.net/dispatch_bot_webhook
+```
+
 ## The most simple thing
 
 1. (complete) command on commute is received
