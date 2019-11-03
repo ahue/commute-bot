@@ -9,10 +9,10 @@
 
 # generate requirements
 pipenv run pipenv_to_requirements -f
-cp requirements.txt functions/dispatch_bot_webhook/requirements.txt
+cp requirements.txt src/functions/dispatch_bot_webhook/requirements.txt
 
 cur_dir=($PWD);
-cd functions/dispatch_bot_webhook;
+cd src/functions/dispatch_bot_webhook;
 
 # deploy
 gcloud functions deploy dispatch_bot_webhook \
