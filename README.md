@@ -1,5 +1,13 @@
 # Commute Bot
 
+This is a Telegram bot, that can be used for helping with the commute. The use cases is solves is the following:
+
+*As a commuter (by car), I need to know when to leave (for home/for work), so I am not stuck in traffic for longer than i find acceptable.*
+
+The bot currently support setting up, polling the status of and canceling a commute. Commutes are active for 2hrs after creation. After that, they are deactived. The user can activate them again.
+
+The bot is build serverless using Google Cloud Functions, Firestore and the Google Maps API (Geocoding and Directions).
+
 ## Environment setup
 
 <https://prassanna.io/blog/pyenv-and-pipenv-for-the-perfect-python-environment/>
