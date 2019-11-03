@@ -18,6 +18,15 @@ gmaps = googlemaps.Client(key=os.environ["GOOGLE_MAPS_API_KEY"])
 
 db = firestore.Client()
 
+class BotClient:
+  """ Singleton for the bot client """
+  instance = None
+  def __init__(self, *args, **kwargs):
+    if not BotClient.instance:
+      BotClient.instance = telegram.Bot(*args, **kwargs)
+    
+  def __getattr__(self, name):
+    return getattr(self.instance, name)
 
 bot = telegram.Bot(token=os.environ["TELEGRAM_TOKEN"])
 
@@ -35,19 +44,25 @@ except:
 
 MAPS_URL = "https://www.google.com/maps/dir/?api=1&orgin={}&destination={}&travelmode=driving"
 
-def helper_chat_id(id):
+def helper_chat_id(id: int):
+  """
+  prepends an telegra_cat_id with "chat_" to have a common id for Firestore documents 
+  """
   return u"chat_{}".format(id)
 
 def helper_concat_latlng(dictionary):
+  """ Concats lat and long from a dictionary by comma """
   res = "{},{}".format(dictionary["latitude"],dictionary["longitude"])
   print(res)
   return res
 
 def helper_maps_url_reply_markup(origin, destination):
+  """ Returns a formatted url to Google Maps directions with provided origin and destination """
   maps_url = MAPS_URL.format(
     origin,
     destination
   )
+  # TODO: Replace whitespaces in URL!
 
   ilb = [[InlineKeyboardButton("Open Google Maps 🗺️",url=maps_url)]]
   reply_markup = InlineKeyboardMarkup(ilb)  
@@ -75,6 +90,7 @@ def frmt_addr(input):
     e.g. Kurfürstendamm 10, Berlin, Germany --> Kurfürstendamm 10 Germany
   """
   # TODO: Add a google maps link to the address
+  # TODO: Remove plz
   return ",".join(input.split(",")[0:-1]).replace(",","").strip()
 
 def command_setup_commute(update, command_body):
@@ -246,11 +262,11 @@ def set_max_travel_time(update, payload):
   commute["max_travel_time"] = payload["max_travel_time"]
   # check reasonable travel time
   check_reasonable_travel_time(commute)
-  
+
+
 def check_reasonable_travel_time(commute):
 
   chat = helper_chat_id(commute["chat"])
-
 
   today = datetime.datetime.today().replace(hour=0, minute=0, second=0, microsecond=0)
   next_sunday_night = int((today + datetime.timedelta(days = (7 - today.weekday()) % 7 ) + datetime.timedelta(hours = 1)
@@ -337,12 +353,13 @@ def check_reasonable_travel_time(commute):
     db.collection(u"commute_setup").document(chat).delete()
 
 def single_status_update_btn(update, *args):
-  # TODO: Refactor naming of function
-  chat = helper_chat_id(update.message.chat.id)
+  # TODO: Refactor naming of function, since its not a button anymore
+  chat = helper_chat_id(update.effective_chat.id)
   commute = db.collection(u"commute_active").document(chat).get().to_dict()
   single_status_update(commute)
 
 def single_status_update(commute):
+  """ Get and send a status update for a given commute """
 
   directions = gmaps.directions(origin=helper_concat_latlng(commute["depart_from_latlng"]),
       destination=commute["commute_to"]
@@ -364,7 +381,8 @@ def single_status_update(commute):
     reply_markup = reply_markup)
 
 def default_text_handler(update):
-  bot.send_message(chat_id = update.message.chat.id, 
+  """ Sends a default message back to the bot """
+  bot.send_message(chat_id = update.effective_chat.id, 
     text = "Sorry, I didn't get that...")
 
 def dispatch_bot_webhook(request):
