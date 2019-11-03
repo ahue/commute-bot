@@ -74,6 +74,7 @@ def frmt_addr(input):
     Nicely formats an address retrieved from google geocoder
     e.g. Kurfürstendamm 10, Berlin, Germany --> Kurfürstendamm 10 Germany
   """
+  # TODO: Add a google maps link to the address
   return ",".join(input.split(",")[0:-1]).replace(",","").strip()
 
 def command_setup_commute(update, command_body):
