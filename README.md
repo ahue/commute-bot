@@ -2,8 +2,6 @@
 
 ## Environment setup
 
-TODO: Test this in a newly checked out directory!
-
 <https://prassanna.io/blog/pyenv-and-pipenv-for-the-perfect-python-environment/>
 
 ```{bash}
@@ -54,39 +52,37 @@ pipenv shell # should setup the environment
 
 The application makes use of the following environment variables
 
-```
+```{}
 TELEGRAM_TOKEN # The token for the telegram bot
 GOOGLE_MAPS_API_KEY # API Key for the Google Maps API
 COMMUTE_BOT_USERS # Comma separated list of Telegram usernames: e.g. user1,user2 to restrict access to the bot
 COMMUTE_ENV=DEV # Switch between development (DEV) and production environment (PRD)
-COMMUTE_BOT_WEBHOOK # Enpoint of the Telegram bot webkook; Typically something like https://<compute-region>-<project-id>.cloudfunctions.net/dispatch_bot_webhook
+COMMUTE_BOT_WEBHOOK # Enpoint of the Telegram bot webkook; Typically something like https://<compute-region>-<project-id>.cloudfunctions.net/dispatch_bot_webhook, Only used by the deploy scripts
 ```
 
-## The most simple thing
+You need to create a file named `cloud-env.yml` in your root directory to store the environment variables for the Cloud Functions deployment:
 
-1. (complete) command on commute is received
-2. command is stored
+```{yml}
+TELEGRAM_TOKEN: your-telegram-bot-token
+GOOGLE_MAPS_API_KEY: your-maps-api-key
+COMMUTE_BOT_USERS: user1,user2
+COMMUTE_ENV: PRD
+COMMUTE_TIMEOUT: "120"
+```
 
-1. commute scheduler calls check function regularly
-2. check function sends info to bot
+## TODO
 
-## GCP
-
-- Project commute-bot
-
-Communication:
-
-Telegram Commands -> Telegram Webhook -> Google Cloud Functions
-GCP Cloud Scheduler -> GCP Cloud Functions (regular commute check) -> Telegram
-Firebase to store commutes
-
-Data structure see data structure.yml
-
-Dialogue
+- Create a python script to configure the bot --> <https://python-telegram-bot.readthedocs.io/en/stable/telegram.bot.html>
+  - Webhook
+  - Name
+  - Commands
+  - Image
+- Test project this in a newly checked out directory
+- Document Firestore data structure
 
 ## Commands
 
-```
+```{}
 /commute [dest] [max_travel_time]
 /cancel_commute
 /update
