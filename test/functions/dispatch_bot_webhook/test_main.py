@@ -3,6 +3,8 @@ import mock
 import unittest
 import os
 import json
+from copy import copy
+import datetime
 
 os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "serviceaccount.json"
 
@@ -63,25 +65,21 @@ def test_frmt_addr():
 
 #     assert int(mock_directions.call_count) == 2
 
+class CheckCurrentDurationTestCase(unittest.TestCase):
 
-
-class SingleStatusUpdateBtnTestCase(unittest.TestCase):
-  
-  @mock.patch("src.functions.dispatch_bot_webhook.main.firestore.Client.collection")
-  @mock.patch("src.functions.dispatch_bot_webhook.main.single_status_update")
-  def test_single_status_update_btn(self, mock_single_status_update, mock_collection):
-    
-    update = mock.Mock()
-    update.effective_chat.id = 100
-
-    subject.single_status_update_btn(update)
-    mock_collection.assert_called_once()
-    mock_single_status_update.assert_called_once()
-
-class SingleStatusUpdateTestCase(unittest.TestCase):
   @mock.patch("src.functions.dispatch_bot_webhook.main.googlemaps.Client.directions")
-  @mock.patch("src.functions.dispatch_bot_webhook.main.telegram.Bot.send_message")
-  def test_single_status_update(self, mock_send_message, mock_directions):
+  @mock.patch("src.functions.dispatch_bot_webhook.main.firestore.Client.collection")
+  def test_check_current_duration(self,mock_collection, mock_directions):
+
+    mock_directions.return_value = [{
+        "legs": [{
+          "end_address": "Destination Adress",
+          "duration": {
+            "text": "Trip duration",
+            "value": 1000
+          }
+        }]
+      }]
 
     commute = {
       "chat": 100,
@@ -92,19 +90,149 @@ class SingleStatusUpdateTestCase(unittest.TestCase):
       }
     }
 
-    mock_directions.return_value = [{
-        "legs": [{
-          "end_address": "Destination Adress",
-          "duration": {
-            "text": "Trip duration"
-          }
-        }]
+    subject.check_current_duration(commute)
+
+    mock_collection.assert_called_once_with(u"commute_active")
+
+
+class CheckActiveCommutesTestCase(unittest.TestCase):
+
+  @mock.patch("src.functions.dispatch_bot_webhook.main.firestore.Query.stream")
+  @mock.patch("src.functions.dispatch_bot_webhook.main.check_current_duration")
+  @mock.patch("src.functions.dispatch_bot_webhook.main.single_status_update")
+  @mock.patch("src.functions.dispatch_bot_webhook.main.firestore.DocumentSnapshot.to_dict")
+  def test_check_active_commutes(self, mock_to_dict, mock_single_status_update, 
+    mock_check_current_duration, mock_stream):
+
+    doc_snp = mock.Mock()
+       
+    mock_stream.return_value = [doc_snp, copy(doc_snp)]
+    doc_snp.to_dict.return_value
+
+    doc_snp.to_dict.return_value = {
+      "chat": 100,
+      "commute_to": "Frankfurt",
+      "max_travel_time": 900
+    }
+
+    mock_check_current_duration.return_value = {
+      "text": "Some time",
+      "value": 3600
+    }
+
+    subject.check_active_commutes()
+
+    assert mock_single_status_update.call_count == 2
+    
+    # Test with last status update 
+    doc_snp.to_dict.return_value["last_status_update"] = datetime.datetime.now().timestamp()
+    
+    subject.check_active_commutes()
+    assert mock_single_status_update.call_count == 2
+
+    # Test with duration probes
+    # timedifference is 900 but duration difference is 0 --> no call
+    doc_snp.to_dict.return_value["duration_probes"] = [{
+      "timestamp": datetime.datetime.now().timestamp() - 900,
+      "duration": 3600
+    }]
+
+    subject.check_active_commutes()
+    assert mock_single_status_update.call_count == 2
+
+    # time difference is 900 and duration abs difference of duration is >900 --> should call
+    # TODO: edge cases
+    doc_snp.to_dict.return_value["duration_probes"][0]["duration"] = 2600
+    subject.check_active_commutes()
+    assert mock_single_status_update.call_count == 4    
+
+    # time difference is 900 and duration abs difference of duration is >900 --> should call
+    doc_snp.to_dict.return_value["duration_probes"][0]["duration"] = 4700
+    subject.check_active_commutes()
+    assert mock_single_status_update.call_count == 6    
+
+    del doc_snp.to_dict.return_value["duration_probes"]
+
+    # Current duration is 900 which is 900*0.97 < max_travel_time --> should call
+    mock_check_current_duration.return_value["value"] = 900
+    subject.check_active_commutes()
+    assert mock_single_status_update.call_count == 8    
+
+
+class RemoveOutdatedCommutesTestCase(unittest.TestCase):
+
+
+  @mock.patch("src.functions.dispatch_bot_webhook.main.firestore.Query.stream")
+  @mock.patch("src.functions.dispatch_bot_webhook.main.firestore.CollectionReference.add")
+  @mock.patch("src.functions.dispatch_bot_webhook.main.firestore.DocumentReference.delete")
+  @mock.patch("src.functions.dispatch_bot_webhook.main.telegram.Bot.send_message")
+  def test_remove_outdated_commutes(self, mock_send_message, mock_delete, mock_add, mock_stream):
+
+    doc_snp = mock.Mock()
+    doc_snp.to_dict.return_value = {}
+    doc_snp.get.side_effect = {"chat": 100, "commute_to": "Berlin"}.get
+    
+    mock_stream.return_value = [doc_snp, copy(doc_snp)]
+    
+    subject.remove_outdated_commutes()
+
+    mock_stream.assert_called_once()
+    assert mock_add.call_count == 2
+    assert mock_send_message.call_count == 2
+    mock_delete.assert_not_called() # since we are in dev
+
+
+class CommuteMonitorTestCase(unittest.TestCase):
+
+  @mock.patch("src.functions.dispatch_bot_webhook.main.check_active_commutes")
+  @mock.patch("src.functions.dispatch_bot_webhook.main.remove_outdated_commutes")
+  def test_commute_monitor(self, mock_remove_outdated_commutes, mock_check_active_commutes):
+
+    subject.commute_monitor(None)
+
+    mock_remove_outdated_commutes.assert_called_once()
+    mock_check_active_commutes.assert_called_once()
+
+class SingleStatusUpdateBtnTestCase(unittest.TestCase):
+  
+  @mock.patch("src.functions.dispatch_bot_webhook.main.firestore.Client.collection")
+  @mock.patch("src.functions.dispatch_bot_webhook.main.single_status_update")
+  @mock.patch("src.functions.dispatch_bot_webhook.main.check_current_duration")
+  def test_single_status_update_btn(self, mock_check_current_duration, 
+    mock_single_status_update, mock_collection):
+    
+    update = mock.Mock()
+    update.effective_chat.id = 100
+
+    mock_check_current_duration.return_value = {
+      "text": "Some text",
+      "value": 1000
+    }
+
+    subject.single_status_update_btn(update)
+    mock_collection.assert_called_once()
+    mock_check_current_duration.assert_called_once()
+    mock_single_status_update.assert_called_once()
+
+class SingleStatusUpdateTestCase(unittest.TestCase):
+  # @mock.patch("src.functions.dispatch_bot_webhook.main.googlemaps.Client.directions")
+  @mock.patch("src.functions.dispatch_bot_webhook.main.telegram.Bot.send_message")
+  def test_single_status_update(self, mock_send_message):
+
+    commute = {
+      "chat": 100,
+      "commute_to": "Frankfurt",
+      "depart_from_latlng": {
+        "latitude": 48.113551,
+        "longitude": 11.683844
       }
-    ]
+    }
 
-    subject.single_status_update(commute)
 
-    mock_directions.assert_called_once()
+
+    subject.single_status_update(commute, {"text": "Some text", "value": 1000})
+
+    # mock_directions.assert_called_once()
     mock_send_message.assert_called_once()
 
 class DefaultTextHandlerTextCase(unittest.TestCase):
