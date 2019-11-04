@@ -91,6 +91,7 @@ COMMUTE_TIMEOUT: "120"
 - Refactor chat_id variable names distinct between Firestore document id (chat_XXXXXXX), chat id within firestore document and telegram chat id
 - Refactor get chat id always from effective chat
 - Dont be surprised if sth not works when switching branches: Could be realted to having Pipfile in the repo but the venv not! Google on how to resolve this
+- Document Cloud scheduler
 
 ## Commands
 
