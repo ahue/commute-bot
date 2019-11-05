@@ -8,6 +8,8 @@ The bot currently support setting up, polling the status of and canceling a comm
 
 The bot is build serverless using Google Cloud Functions, Firestore and the Google Maps API (Geocoding and Directions).
 
+## Bot usage
+
 ## Environment setup
 
 <https://prassanna.io/blog/pyenv-and-pipenv-for-the-perfect-python-environment/>

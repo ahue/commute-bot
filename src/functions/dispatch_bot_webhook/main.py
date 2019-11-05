@@ -136,6 +136,27 @@ def command_setup_commute(update, command_body):
 
   return(("OK", 200))
 
+def send_start_message(update, *args):
+
+  bot.send_message(update.effective_chat.id,
+    "Welcome, I'm your Commute Bot. I help minimize your commute time by car. Check me out on github: https://github.com/ahue/commute-bot")
+
+  send_help_message(update)
+
+def send_help_message(update, *args):
+  
+  bot.send_message(chat_id = update.effective_chat.id, text =
+  """
+This is how you can interact with me.
+    
+`/help` - displays this message you are now reading
+`/commute` <destination> <max travel time> - initiates a new commute to <destination>. Your accepted travel time would be <max travel time>
+`/cancel_commute` - cancels the current commute
+`/update` - makes me send you an update for your current commute
+
+That's basically all. Happy commuting!
+  """.strip(), parse_mode="Markdown")
+
 def command_callback(update):
   # TODO: Add the commands to the telegram bot
   command = update.message.text 
@@ -147,7 +168,9 @@ def command_callback(update):
   handler = {
     "/commute": command_setup_commute,
     "/cancel_commute": cancel_commute,
-    "/update": single_status_update_btn
+    "/update": single_status_update_btn,
+    "/start": send_start_message,
+    "/help": send_help_message
   }.get(command_prefix, "Ohoh!")
 
   print(str(handler))
