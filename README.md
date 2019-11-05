@@ -10,6 +10,8 @@ The bot is build serverless using Google Cloud Functions, Firestore and the Goog
 
 ## Bot usage
 
+Text the bot /help and you'll receive help.
+
 ## Environment setup
 
 <https://prassanna.io/blog/pyenv-and-pipenv-for-the-perfect-python-environment/>
