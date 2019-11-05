@@ -157,6 +157,22 @@ This is how you can interact with me.
 That's basically all. Happy commuting!
   """.strip(), parse_mode="Markdown")
 
+def send_privacy_message(update, *args):
+
+  bot.send_message(chat_id = update.effective_chat.id, text =
+  """
+I value your privacy. To provide my services, I process and store the following data about you:
+
+- The id of this chat
+- Timestamps of commute creation
+- Your shared location (only in the instant you shared, not continous)
+- The destination you want to commute to
+
+I store the data on the Google Cloud Platform and use the Google Maps API to retrieve commute duration.
+
+After a commute is deactivated, it is archived, so you can reactivate your last commute. More features to access past commutes are planned. A command to delete all your data is planned.
+  """.strip(), parse_mode="Markdown")
+
 def command_callback(update):
   # TODO: Add the commands to the telegram bot
   command = update.message.text 
@@ -170,7 +186,8 @@ def command_callback(update):
     "/cancel_commute": cancel_commute,
     "/update": single_status_update_btn,
     "/start": send_start_message,
-    "/help": send_help_message
+    "/help": send_help_message,
+    "/privacy": send_privacy_message
   }.get(command_prefix, "Ohoh!")
 
   print(str(handler))
