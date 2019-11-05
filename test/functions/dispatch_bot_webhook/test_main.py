@@ -18,7 +18,7 @@ def test_helper_concat_latlng():
     "latitude": 48.139260,
     "longitude": 11.563405
   }
-  assert subject.helper_concat_latlng(data) == "48.139260,11.563405"
+  assert subject.helper_concat_latlng(data) == "48.13926,11.563405"
 
 class MapsUrlHelperReplyMarkupTestCase(unittest.TestCase):
 
@@ -235,16 +235,46 @@ class SingleStatusUpdateTestCase(unittest.TestCase):
     # mock_directions.assert_called_once()
     mock_send_message.assert_called_once()
 
-class DefaultTextHandlerTextCase(unittest.TestCase):
+class SendStartMessageTestCase(unittest.TestCase):
+  
+  @mock.patch("src.functions.dispatch_bot_webhook.main.telegram.Bot.send_message")
+  @mock.patch("src.functions.dispatch_bot_webhook.main.send_help_message")
+  def test_send_start_message(self, mock_send_help_message, mock_send_message):
+
+    update = mock.Mock()
+    update.effective_chat.id = 100
+    subject.send_start_message(update)
+    mock_send_message.assert_called_once()
+    mock_send_help_message.assert_called_once()
+
+class SendHelpMessageTestCase(unittest.TestCase):
+  
+  @mock.patch("src.functions.dispatch_bot_webhook.main.telegram.Bot.send_message")
+  def test_send_help_message(self, mock_send_message):
+
+    update = mock.Mock()
+    update.effective_chat.id = 100
+    subject.send_help_message(update)
+    mock_send_message.assert_called_once()
+
+class SendPrivacyMessageTestCase(unittest.TestCase):
+  
+  @mock.patch("src.functions.dispatch_bot_webhook.main.telegram.Bot.send_message")
+  def test_send_privacy_message(self, mock_send_message):
+
+    update = mock.Mock()
+    update.effective_chat.id = 100
+    subject.send_privacy_message(update)
+    mock_send_message.assert_called_once()
+
+class DefaultTextHandlerTestCase(unittest.TestCase):
   
   @mock.patch("src.functions.dispatch_bot_webhook.main.telegram.Bot.send_message")
   def test_default_text_handler(self, mock_send_message):
 
     update = mock.Mock()
     update.effective_chat.id = 100
-
     subject.default_text_handler(update)
-
     mock_send_message.assert_called_once_with(chat_id = update.effective_chat.id, text = "Sorry, I didn't get that...")
 
 class DispatchBotWebhookTextCase(unittest.TestCase):
