@@ -15,10 +15,10 @@ def test_helper_chat_id():
 
 def test_helper_concat_latlng():
   data = {
-    "latitude": 48.113551,
-    "longitude": 11.683844
+    "latitude": 48.139260,
+    "longitude": 11.563405
   }
-  assert subject.helper_concat_latlng(data) == "48.113551,11.683844"
+  assert subject.helper_concat_latlng(data) == "48.139260,11.563405"
 
 class MapsUrlHelperReplyMarkupTestCase(unittest.TestCase):
 
@@ -56,8 +56,8 @@ def test_frmt_addr():
 #       "chat": 100,
 #       "commute_to": "Frankfurt",
 #       "depart_from_latlng": {
-#         "latitude": 48.113551,
-#         "longitude": 11.683844
+#         "latitude": 48.139260,
+#         "longitude": 11.563405
 #       }
 #     }
 
@@ -85,8 +85,8 @@ class CheckCurrentDurationTestCase(unittest.TestCase):
       "chat": 100,
       "commute_to": "Frankfurt",
       "depart_from_latlng": {
-        "latitude": 48.113551,
-        "longitude": 11.683844
+        "latitude": 48.139260,
+        "longitude": 11.563405
       }
     }
 
@@ -223,8 +223,8 @@ class SingleStatusUpdateTestCase(unittest.TestCase):
       "chat": 100,
       "commute_to": "Frankfurt",
       "depart_from_latlng": {
-        "latitude": 48.113551,
-        "longitude": 11.683844
+        "latitude": 48.139260,
+        "longitude": 11.563405
       }
     }
 
@@ -360,8 +360,8 @@ class DispatchBotWebhookTextCase(unittest.TestCase):
     # Test location
     data["message"]["text"] = ""
     data["message"]["location"] = {
-      "longitude": 11.683844,
-      "latitude": 48.113551
+      "longitude": 11.563405,
+      "latitude": 48.139260
     }
     req = mock.Mock(get_json=mock.Mock(return_value = data), args=data)
     subject.dispatch_bot_webhook(req)
@@ -413,7 +413,7 @@ class DispatchBotWebhookTextCase(unittest.TestCase):
             ]
           },
           "from": {
-            "id": 946328885,
+            "id": 987654321,
             "first_name": "Commute Bot",
             "is_bot": true,
             "username": "AhuCommuteBot"
@@ -485,7 +485,7 @@ class DispatchBotWebhookTextCase(unittest.TestCase):
           ]
         },
         "from": {
-          "id": 946328885,
+          "id": 987654321,
           "first_name": "Commute Bot",
           "is_bot": true,
           "username": "AhuCommuteBot"
