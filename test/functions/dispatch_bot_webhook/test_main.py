@@ -69,7 +69,10 @@ class CheckCurrentDurationTestCase(unittest.TestCase):
 
   @mock.patch("src.functions.dispatch_bot_webhook.main.googlemaps.Client.directions")
   @mock.patch("src.functions.dispatch_bot_webhook.main.firestore.Client.collection")
-  def test_check_current_duration(self,mock_collection, mock_directions):
+  @mock.patch("src.functions.dispatch_bot_webhook.main.firestore.CollectionReference.document")
+  @mock.patch("src.functions.dispatch_bot_webhook.main.firestore.DocumentSnapshot.get")
+  @mock.patch("src.functions.dispatch_bot_webhook.main.firestore.DocumentReference.set")
+  def test_check_current_duration(self,mock_set, mock_get, mock_document, mock_collection, mock_directions):
 
     mock_directions.return_value = [{
         "legs": [{
@@ -90,9 +93,21 @@ class CheckCurrentDurationTestCase(unittest.TestCase):
       }
     }
 
+    mock_get.return_value = None
+
     subject.check_current_duration(commute)
 
     mock_collection.assert_called_once_with(u"commute_active")
+    # mock_document.assert_called_once_with(commute["chat"])
+    # mock_set.assert_called_once()
+
+    # mock_get.return_value = []
+    # subject.check_current_duration(commute)
+
+    # mock_collection.assert_called_once_with(u"commute_active")
+    # mock_document.assert_called_once_with(commute["chat"])
+    # mock_set.assert_called_once()
+
 
 
 class CheckActiveCommutesTestCase(unittest.TestCase):

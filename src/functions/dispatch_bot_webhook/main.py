@@ -413,8 +413,13 @@ def check_current_duration(commute):
 
   chat = helper_chat_id(commute["chat"])
   doc_ref = db.collection(u"commute_active").document(chat)
+  
+  duration_probes = doc_ref.get().get("duration_probes")
+  if duration_probes is None:
+    duration_probes = []
+
   doc_ref.set({
-    "duration_probes": doc_ref.get().get("duration_probes").append({
+    "duration_probes": duration_probes.append({
       "timestamp": int(datetime.datetime.now().timestamp()),
       "duration": duration["value"]
     })
