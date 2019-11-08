@@ -7,3 +7,4 @@ location_message.json
 setup_env.sh
 cloud_env.yml
 .coverage
+requirements.txt
