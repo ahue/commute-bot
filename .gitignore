@@ -8,3 +8,5 @@ setup_env.sh
 cloud_env.yml
 .coverage
 requirements.txt
+src/bot_config.py
+bot_config.yml

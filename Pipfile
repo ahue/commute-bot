@@ -16,6 +16,8 @@ numpy = "*"
 pytest = "*"
 mock = "*"
 pytest-cov = "*"
+pyyaml = "*"
+cffi = "*"
 
 [requires]
 python_version = "3.7"
