@@ -28,7 +28,7 @@ class MapsUrlHelperReplyMarkupTestCase(unittest.TestCase):
 
     print(subject.helper_maps_url_reply_markup("from here", "to there"))
 
-    url = "https://www.google.com/maps/dir/?api=1&orgin=from here&destination=to there&travelmode=driving"
+    url = "https://www.google.com/maps/dir/?api=1&origin=from+here&destination=to+there&travelmode=driving"
 
     mock_ikb.assert_called_with("Open Google Maps 🗺️", url=url)
     mock_ikm.assert_called_once()
@@ -44,7 +44,7 @@ def test_frmt_ttime():
 
 def test_frmt_addr():
   assert subject.frmt_addr("Kurfürstendamm 10, Berlin, Germany") == "Kurfürstendamm 10 Berlin"
-  assert subject.frmt_addr("Kurfürstendamm 10, 88888 Berlin, Germany") == "Kurfürstendamm 10 88888 Berlin"
+  assert subject.frmt_addr("Kurfürstendamm 10, 88888 Berlin, Germany") == "Kurfürstendamm 10 Berlin"
 
 # class CheckReasonableTravelTime(unittest.TestCase):
 
@@ -114,7 +114,7 @@ class CheckActiveCommutesTestCase(unittest.TestCase):
 
   @mock.patch("src.functions.dispatch_bot_webhook.main.firestore.Query.stream")
   @mock.patch("src.functions.dispatch_bot_webhook.main.check_current_duration")
-  @mock.patch("src.functions.dispatch_bot_webhook.main.single_status_update")
+  @mock.patch("src.functions.dispatch_bot_webhook.main.send_single_status_update")
   @mock.patch("src.functions.dispatch_bot_webhook.main.firestore.DocumentSnapshot.to_dict")
   def test_check_active_commutes(self, mock_to_dict, mock_single_status_update, 
     mock_check_current_duration, mock_stream):
@@ -127,7 +127,11 @@ class CheckActiveCommutesTestCase(unittest.TestCase):
     doc_snp.to_dict.return_value = {
       "chat": 100,
       "commute_to": "Frankfurt",
-      "max_travel_time": 900
+      "max_travel_time": 900,
+      "depart_from_latlng": {
+        "latitude": 41.23123,
+        "longitude": 11.23122
+      }
     }
 
     mock_check_current_duration.return_value = {
@@ -224,15 +228,15 @@ class SingleStatusUpdateBtnTestCase(unittest.TestCase):
       "value": 1000
     }
 
-    subject.single_status_update_btn(update)
+    subject.single_status_update(update)
     mock_collection.assert_called_once()
     mock_check_current_duration.assert_called_once()
     mock_single_status_update.assert_called_once()
 
-class SingleStatusUpdateTestCase(unittest.TestCase):
+class SendSingleStatusUpdateTestCase(unittest.TestCase):
   # @mock.patch("src.functions.dispatch_bot_webhook.main.googlemaps.Client.directions")
   @mock.patch("src.functions.dispatch_bot_webhook.main.telegram.Bot.send_message")
-  def test_single_status_update(self, mock_send_message):
+  def test_send_single_status_update(self, mock_send_message):
 
     commute = {
       "chat": 100,
@@ -245,7 +249,7 @@ class SingleStatusUpdateTestCase(unittest.TestCase):
 
 
 
-    subject.single_status_update(commute, {"text": "Some text", "value": 1000})
+    subject.send_single_status_update(commute=commute, duration = {"text": "Some text", "value": 1000})
 
     # mock_directions.assert_called_once()
     mock_send_message.assert_called_once()

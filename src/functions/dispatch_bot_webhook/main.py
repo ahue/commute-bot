@@ -8,6 +8,8 @@ from telegram.ext import MessageHandler, Filters, CallbackQueryHandler
 import datetime
 import json
 import numpy as np
+import urllib.parse
+import re
 
 # parser = argparse.ArgumentParser(description = "Parses command")
 # parser.add_argument("to", type=str, nargs=1, help="the place to commute to")
@@ -35,6 +37,7 @@ bot = telegram.Bot(token=os.environ["TELEGRAM_TOKEN"])
 
 KEYB_BTN_REQUEST_STATUS = "Request update on commute time 🔄"
 KEYB_BTN_CANCEL_COMMUTE = "Cancel commute ❌"
+KEYB_BTN_CANCEL_SETUP = "Cancel setup ❌"
 COMMUTE_ENV = os.environ["COMMUTE_ENV"]
 COMMUTE_ENV_PRD = "PRD"
 COMMUTE_ENV_DEV = "DEV"
@@ -43,7 +46,7 @@ try:
 except:
   COMMUTE_TIMEOUT = 120
 
-MAPS_URL = "https://www.google.com/maps/dir/?api=1&orgin={}&destination={}&travelmode=driving"
+MAPS_URL = "https://www.google.com/maps/dir/"
 
 def helper_chat_id(id: int):
   """
@@ -59,14 +62,17 @@ def helper_concat_latlng(dictionary):
 
 def helper_maps_url_reply_markup(origin, destination):
   """ Returns a formatted url to Google Maps directions with provided origin and destination """
-  maps_url = MAPS_URL.format(
-    origin,
-    destination
-  )
-  # TODO: Replace whitespaces in URL!
+  q = urllib.parse.urlencode({
+    "api": 1,
+    "origin": origin,
+    "destination": destination,
+    "travelmode": "driving"
+  })
+
+  maps_url = "?".join([MAPS_URL, q])
 
   ilb = [[InlineKeyboardButton("Open Google Maps 🗺️",url=maps_url)]]
-  reply_markup = InlineKeyboardMarkup(ilb)  
+  reply_markup = InlineKeyboardMarkup(ilb)
   return reply_markup
 
 def frmt_ttime(seconds):
@@ -91,8 +97,11 @@ def frmt_addr(input):
     e.g. Kurfürstendamm 10, Berlin, Germany --> Kurfürstendamm 10 Germany
   """
   # TODO: Add a google maps link to the address
-  # TODO: Remove plz
-  return ",".join(input.split(",")[0:-1]).replace(",","").strip()
+
+  res = ",".join(input.split(",")[0:-1]).replace(",","").strip()
+  res = re.sub(r"\d{5}", "", res)
+  res = re.sub(r"\s{2,}", " ", res)
+  return res
 
 def command_setup_commute(update, command_body):
   
@@ -121,9 +130,8 @@ def command_setup_commute(update, command_body):
   })
 
   # request current geolocation from user
-
-  # TODO: Add button to cancel
-  kb = [[KeyboardButton("Tap to share your location. 📍", request_location=True)]]
+  kb = [[KeyboardButton("Tap to share your location. 📍", request_location=True), 
+    KEYB_BTN_CANCEL_SETUP]]
   reply_markup = ReplyKeyboardMarkup(kb, resize_keyboard=True, one_time_keyboard=True)
 
   print(update.message.chat.id)
@@ -174,7 +182,7 @@ After a commute is deactivated, it is archived, so you can reactivate your last 
   """.strip(), parse_mode="Markdown")
 
 def command_callback(update):
-  # TODO: Add the commands to the telegram bot
+
   command = update.message.text 
 
   command_prefix = command.split(" ")[0].strip()
@@ -183,8 +191,8 @@ def command_callback(update):
   print(command_body)
   handler = {
     "/commute": command_setup_commute,
-    "/cancel_commute": cancel_commute,
-    "/update": single_status_update_btn,
+    "/cancel_commute": cancel_commute_active,
+    "/update": single_status_update,
     "/start": send_start_message,
     "/help": send_help_message,
     "/privacy": send_privacy_message
@@ -218,7 +226,7 @@ def activate_commute_msg(commute):
   reply_markup = reply_markup)
 
   duration = check_current_duration(commute)
-  single_status_update(commute, duration)
+  send_single_status_update(commute, duration)
 
 def location_callback(update):
 
@@ -235,7 +243,6 @@ def location_callback(update):
   msg = bot.send_message(chat_id = commute["chat"], text = ".", reply_markup=ReplyKeyboardRemove())
   bot.delete_message(chat_id = commute["chat"], message_id=msg.message_id)
 
-  # TODO: Check minimal travel time and alert if requested time is lower than that
   check_reasonable_travel_time(commute)
 
   return
@@ -243,8 +250,9 @@ def location_callback(update):
 def text_callback(update):
 
   handler = {
-    KEYB_BTN_CANCEL_COMMUTE: cancel_commute,
-    KEYB_BTN_REQUEST_STATUS: single_status_update_btn
+    KEYB_BTN_CANCEL_SETUP: cancel_commute_setup,
+    KEYB_BTN_CANCEL_COMMUTE: cancel_commute_active,
+    KEYB_BTN_REQUEST_STATUS: single_status_update
   }.get(update.message.text, default_text_handler)
 
   handler(update)
@@ -266,9 +274,24 @@ def callback_query_callback(update):
 
   handler(update, callback_data_payload)
 
-def cancel_commute(update, *args):
+def cancel_commute_setup(update, *args):
 
-  chat_id = update.message.chat.id
+  chat_id = update.effective_chat.id
+  chat = helper_chat_id(chat_id)
+
+  doc_ref = db.collection(u"commute_setup").document(chat)
+
+  bot.send_message(chat_id = chat_id, 
+    text="Canceled your commute to *{}*".format(frmt_addr(doc_ref.get().get("commute_to"))),
+    parse_mode = "Markdown", 
+    reply_markup = ReplyKeyboardRemove())
+
+  doc_ref.delete()
+
+
+def cancel_commute_active(update, *args):
+
+  chat_id = update.effective_chat.id
   chat = helper_chat_id(chat_id)
 
   doc_ref = db.collection(u"commute_active").document(chat)
@@ -283,9 +306,11 @@ def cancel_commute(update, *args):
 def reactivate_last_commute(update, *args):
   print("reactivate_last_commute")
   # get last commute from archive
-  # TODO: Remove the working info from document (e.g. duration probes, current traveltime, min traveltime)
   doc_snp = next(db.collection(u"commute_archive").where("chat", "==", update.effective_chat.id).order_by("created").limit(1).stream()).to_dict()
   
+  # Remove the working info from document (e.g. duration probes, current traveltime, min traveltime)
+  del doc_snp["duration_probes"]
+
   doc_snp["created"] = int(datetime.datetime.now().timestamp())
 
   # set to active
@@ -392,13 +417,12 @@ def check_reasonable_travel_time(commute):
   if COMMUTE_ENV == COMMUTE_ENV_DEV:
     db.collection(u"commute_setup").document(chat).delete()
 
-def single_status_update_btn(update, *args):
-  # TODO: Refactor naming of function, since its not a button anymore
+def single_status_update(update, *args):
   chat = helper_chat_id(update.effective_chat.id)
   commute = db.collection(u"commute_active").document(chat).get().to_dict()
   
   duration = check_current_duration(commute)
-  single_status_update(commute, duration)
+  send_single_status_update(commute, duration)
 
 def check_current_duration(commute):
 
@@ -427,7 +451,7 @@ def check_current_duration(commute):
 
   return duration
 
-def single_status_update(commute, duration):
+def send_single_status_update(commute, duration):
   """ Get and send a status update for a given commute """
 
   # print("Got directions")
@@ -456,46 +480,52 @@ def default_text_handler(update):
 
 def dispatch_bot_webhook(request):
 
-  update = telegram.Update.de_json(request.get_json(force=True), bot)
-  print(update)
-
-  # Only allow defined users to use the bot
-  if update.effective_user.username not in os.environ["COMMUTE_BOT_USERS"].split(","):
-    return ("Nothing to gain here")
-
-  print("passed user check")
-  callback_query_filter = CallbackQueryHandler(callback_query_callback)
-
-  handler = None
   try:
-    if Filters.command.filter(update.message):
-      print("command_handler")
-      handler = command_callback
-  except AttributeError:
-    None
 
-  try:
-    if Filters.location.filter(update.message):
-      print("location_handler")
-      handler = location_callback
-  except AttributeError:
-    None
+    update = telegram.Update.de_json(request.get_json(force=True), bot)
+    print(update)
 
-  try:
-    if Filters.text.filter(update.message):
-      print("text_handler")
-      handler =text_callback
-  except AttributeError:
-    None
+    # Only allow defined users to use the bot
+    if update.effective_user.username not in os.environ["COMMUTE_BOT_USERS"].split(","):
+      return ("Nothing to gain here")
 
-  try:
-    if callback_query_filter.check_update(update):
-      print("callback_query_filter")
-      handler = callback_query_callback
-  except AttributeError:
-    None
+    print("passed user check")
+    callback_query_filter = CallbackQueryHandler(callback_query_callback)
 
-  handler(update)
+    handler = None
+    try:
+      if Filters.command.filter(update.message):
+        print("command_handler")
+        handler = command_callback
+    except AttributeError:
+      None
+
+    try:
+      if Filters.location.filter(update.message):
+        print("location_handler")
+        handler = location_callback
+    except AttributeError:
+      None
+
+    try:
+      if Filters.text.filter(update.message):
+        print("text_handler")
+        handler =text_callback
+    except AttributeError:
+      None
+
+    try:
+      if callback_query_filter.check_update(update):
+        print("callback_query_filter")
+        handler = callback_query_callback
+    except AttributeError:
+      None
+
+    handler(update)
+
+  except Exception as e:
+    print(e)
+    bot.send_message("An error occured.")
 
 def check_active_commutes():
   # get active commutes
@@ -531,7 +561,7 @@ def check_active_commutes():
       duration["value"] * 0.95 < commute["max_travel_time"] or # close to desired commute_time 
       last_status_update < int(ts_now) - 900): # didn't hear from the bot longer that 15mins
           
-      single_status_update(commute, duration)
+      send_single_status_update(commute, duration)
 
 def remove_outdated_commutes():
   """ remove outdated commutes after timeout period """
